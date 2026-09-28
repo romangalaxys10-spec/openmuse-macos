@@ -5,6 +5,7 @@ import { MessageSchema } from "@ag-ui/core";
 import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { LocalIntelligence } from "./engine/local-intelligence.ts";
+import { createLocalComputerRunner } from "./engine/local-computer.ts";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -43,7 +44,11 @@ export async function createApp(
     connection: (owner) => workspace.connection(owner),
   });
   const browser = new BrowserService(db, config, auth, files);
-  const computer = new ComputerService(db, config, options.docker);
+  const computer = new ComputerService(
+    db,
+    config,
+    options.docker ?? (config.computerEnabled ? createLocalComputerRunner(config) : undefined),
+  );
   const agent = new AgentService(db, config, workspace, files, actions, browser, computer);
   const intelligence = new LocalIntelligence(db, { apiKey: config.intelligenceApiKey });
   const runtime = makeRuntime(config, agent, auth, intelligence);
