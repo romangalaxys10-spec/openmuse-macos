@@ -239,9 +239,6 @@ export async function createApp(
     );
   });
   app.get("/api/main-thread", async (c) => {
-    if (config.richThreads === false) {
-      return c.json({ threadId: "local-main", existing: true });
-    }
     const owner = c.get("owner");
     await db.insertIfAbsent(owner, "conversation-settings", {
       id: "main",
@@ -249,20 +246,14 @@ export async function createApp(
       existing: false,
     });
     const main = await db.get<{ threadId: string }>(owner, "conversation-settings", "main");
-    if (!main) throw new AppError("Main conversation could not be loaded", 503);
-    try {
-      await intelligence.getOrCreateThread({
-        threadId: main.threadId,
-        userId: owner,
-        agentId: "default",
-      });
-    } catch {
-      throw new AppError(
-        "Main conversation is unavailable. Check the Rich Threads connection and try again.",
-        502,
-      );
-    }
-    return c.json({ threadId: main.threadId, existing: true });
+    const threadId = main?.threadId ?? "local-main";
+    await intelligence.getOrCreateThread({
+      threadId,
+      userId: owner,
+      agentId: "default",
+      name: "Main chat",
+    });
+    return c.json({ threadId, existing: true });
   });
   app.get("/api/conversation", async (c) =>
     c.json((await db.get(c.get("owner"), "conversations", "default")) ?? { messages: [] }),
@@ -365,14 +356,13 @@ export async function createApp(
     await browser.input(c.get("owner"), c.req.param("id"), await c.req.json());
     return c.json({ ok: true });
   });
-  app.all("/api/copilotkit/*", async (c) => {
+  const handleCopilotKit = async (c: any) => {
     if (!agentConfigured(config))
       throw new AppError(
         "Configure a model and provider API key, or a valid AG-UI endpoint, to start chat",
         503,
       );
     const response = await runtime.fetch(c.req.raw);
-    // Runtime 1.70 emits SSE strings; a WHATWG Response body requires byte chunks.
     const encoder = new TextEncoder();
     const body = response.body?.pipeThrough(
       new TransformStream({
@@ -382,7 +372,9 @@ export async function createApp(
       }),
     );
     return new Response(body, { status: response.status, headers: response.headers });
-  });
+  };
+  app.all("/api/copilotkit", handleCopilotKit);
+  app.all("/api/copilotkit/*", handleCopilotKit);
   const webDist = resolve(process.cwd(), "apps/mobile/dist/web");
   if (existsSync(webDist)) {
     app.use("/*", serveStatic({ root: "./apps/mobile/dist/web" }));

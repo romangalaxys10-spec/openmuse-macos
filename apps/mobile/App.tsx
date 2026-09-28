@@ -8,6 +8,7 @@ import {
   Menu,
   MessageCircle,
   PanelsTopLeft,
+  Plus,
   Shapes,
   SquareCheck,
   X,
@@ -240,7 +241,7 @@ function WorkspaceShell({
   error: string;
   prompt?: { id: number; text: string };
 }) {
-  const { workspace, section, navigate, open } = useWorkspace();
+  const { workspace, section, navigate, open, notify } = useWorkspace();
   const { data } = useAgentWorkspace();
   const {
     selection,
@@ -250,6 +251,7 @@ function WorkspaceShell({
     error: threadsError,
     retry: retryThreads,
     enabled: richThreads,
+    start: startNewThread,
   } = useMuseThread();
   const [threadsOpen, setThreadsOpen] = useState(false);
   const { width } = useWindowDimensions();
@@ -299,16 +301,37 @@ function WorkspaceShell({
               height: desktop ? 146 : 122,
               paddingTop: desktop ? 14 : 2,
               marginHorizontal: 20,
+              position: "relative",
+              zIndex: 20,
             }}
           >
-            <View style={{ position: "absolute", left: 0, top: 16 }}>
+            <View
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 16,
+                zIndex: 30,
+                flexDirection: "row",
+                gap: 8,
+              }}
+            >
               <IconButton
                 icon={Menu}
                 label="Open conversations and menu"
                 onPress={() => setThreadsOpen(true)}
               />
+              {section === "chat" && (
+                <IconButton
+                  icon={Plus}
+                  label="Start new chat"
+                  onPress={() => {
+                    startNewThread();
+                    notify("Started new chat session");
+                  }}
+                />
+              )}
             </View>
-            <View style={{ alignItems: "center", gap: 1 }}>
+            <View pointerEvents="box-none" style={{ alignItems: "center", gap: 1 }}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${agentName} activity and approvals`}
@@ -339,7 +362,7 @@ function WorkspaceShell({
               </Pressable>
               {section === "chat" && <ComputerEntry />}
             </View>
-            <View style={{ position: "absolute", right: 0, top: 16 }}>
+            <View style={{ position: "absolute", right: 0, top: 16, zIndex: 30 }}>
               <IconButton
                 icon={Bell}
                 label={`Notifications, ${pending} unread or pending`}

@@ -49,19 +49,44 @@ export function makeRuntime(
               await auth.owner(request.headers.get("authorization") ?? undefined),
             ),
   });
-  const runtime =
-    config.richThreads !== false
-      ? new CopilotRuntime({
-          agents,
-          intelligence,
-          identifyUser: async (request) => ({
-            id: await auth.owner(request.headers.get("authorization") ?? undefined),
-            name: "OpenMuse user",
-          }),
-          generateThreadNames: false,
-        })
-      : new CopilotRuntime({
-          agents,
-        });
-  return createCopilotHonoHandler({ runtime, basePath: "/api/copilotkit" });
+  const runtime = new CopilotRuntime({
+    agents,
+  });
+  const multiHandler = createCopilotHonoHandler({
+    runtime,
+    basePath: "/api/copilotkit",
+    mode: "multi-route",
+  });
+  const singleHandler = createCopilotHonoHandler({
+    runtime,
+    basePath: "/api/copilotkit",
+    mode: "single-route",
+  });
+  return {
+    async fetch(request: Request) {
+      let isSingle = false;
+      let clone: Request | undefined;
+      try {
+        clone = request.clone();
+        if (request.method === "POST") {
+          const contentType = request.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const body = await request.clone().json().catch(() => null);
+            if (body && typeof body.method === "string") {
+              isSingle = true;
+            }
+          }
+        }
+      } catch {}
+
+      if (isSingle) {
+        const res = await singleHandler.fetch(request);
+        if (res.status === 404 && clone) {
+          return multiHandler.fetch(clone);
+        }
+        return res;
+      }
+      return multiHandler.fetch(request);
+    },
+  };
 }

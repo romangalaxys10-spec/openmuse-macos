@@ -37,7 +37,7 @@ const ThreadContext = createContext<{
 export function ThreadsProvider({ children }: { children: ReactNode }) {
   const { workspace, navigate, api } = useWorkspace();
   const handledPrompt = useRef(0);
-  const enabled = workspace.runtime.richThreads === true;
+  const enabled = workspace.runtime.richThreads !== false;
   const [selection, setSelection] = useState<Selection>({ id: "local", existing: false });
   const [visited, setVisited] = useState<Selection[]>([]);
   const [mainId, setMainId] = useState("local");
@@ -66,9 +66,36 @@ export function ThreadsProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [api, enabled, attempt]);
+  useEffect(() => {
+    let saved: Selection[] = [];
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        const raw = window.localStorage.getItem("openmuse_visited_threads");
+        if (raw) saved = JSON.parse(raw);
+      }
+    } catch {}
+    if (saved.length > 0) {
+      setVisited((curr) => {
+        const combined = [...curr];
+        for (const item of saved) {
+          if (!combined.some((c) => c.id === item.id)) combined.push(item);
+        }
+        return combined;
+      });
+    }
+  }, []);
+
   function select(next: Selection) {
     setSelection(next);
-    setVisited((items) => (items.some((item) => item.id === next.id) ? items : [...items, next]));
+    setVisited((items) => {
+      const updated = items.some((item) => item.id === next.id) ? items : [...items, next];
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem("openmuse_visited_threads", JSON.stringify(updated));
+        }
+      } catch {}
+      return updated;
+    });
     navigate("chat");
   }
   return (
@@ -286,15 +313,39 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
             <LinkRow
               icon={MessageCircle}
               title="Main chat"
-              detail="Saved in this workspace"
+              detail="Ongoing conversation"
               onPress={() => {
-                navigate("chat");
+                select({ id: mainId, existing: true });
                 onClose();
               }}
             />
-            <Text style={s.muted}>
-              Your conversation is saved in this workspace. You can manage connections in Apps.
-            </Text>
+            <Button
+              primary
+              icon={Plus}
+              onPress={() => {
+                start();
+                onClose();
+              }}
+            >
+              New chat session
+            </Button>
+            {visited.length > 1 && (
+              <>
+                <Text style={[s.heading, { marginTop: 12 }]}>Recent chats</Text>
+                {visited.map((item, index) => (
+                  <LinkRow
+                    key={item.id}
+                    icon={MessageCircle}
+                    title={item.id === mainId ? "Main chat" : `Chat ${index + 1}`}
+                    detail={selection.id === item.id ? "Active conversation" : "Switch to this chat"}
+                    onPress={() => {
+                      select(item);
+                      onClose();
+                    }}
+                  />
+                ))}
+              </>
+            )}
           </>
         )}
         <View style={s.divider} />

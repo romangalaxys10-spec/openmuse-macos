@@ -1,17 +1,6 @@
 import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import type { Store } from "../db.ts";
 
-function isAuthOrCloudFailure(err: any): boolean {
-  if (!err) return false;
-  const status = err.status ?? err.statusCode;
-  const msg = String(err.message || "");
-  if (status === 401 || status === 403) return true;
-  if (msg.includes("AUTH_UNAUTHENTICATED") || msg.includes("Authentication is required")) return true;
-  if (msg.includes("401") || msg.includes("403")) return true;
-  if (msg.includes("fetch failed") || msg.includes("ENOTFOUND")) return true;
-  return false;
-}
-
 export class LocalIntelligence extends CopilotKitIntelligence {
   constructor(
     private readonly db: Store,
@@ -21,182 +10,171 @@ export class LocalIntelligence extends CopilotKitIntelligence {
   }
 
   override async getOrCreateThread(params: any): Promise<any> {
-    try {
-      return await super.getOrCreateThread(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        await this.db.insertIfAbsent(params.userId, "threads", {
-          id: params.threadId,
-          name: "Main chat",
-          userId: params.userId,
-          agentId: params.agentId,
-          createdAt: new Date().toISOString(),
-          archived: false,
-        });
-        const thread =
-          (await this.db.get(params.userId, "threads", params.threadId)) ?? {
-            id: params.threadId,
-            name: "Main chat",
-            userId: params.userId,
-            agentId: params.agentId,
-            createdAt: new Date().toISOString(),
-            archived: false,
-          };
-        return { thread, created: true };
-      }
-      throw err;
+    const userId = params.userId || "local-user";
+    const existing = await this.db.get<any>(userId, "threads", params.threadId);
+    if (existing) {
+      return { thread: existing, created: false };
     }
+    const isMain = String(params.threadId).includes("main");
+    const thread = {
+      id: params.threadId,
+      name: params.name || (isMain ? "Main chat" : "New conversation"),
+      userId,
+      agentId: params.agentId || "default",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      archived: false,
+    };
+    await this.db.put(userId, "threads", thread);
+    return { thread, created: true };
   }
 
   override async getThread(params: any): Promise<any> {
-    try {
-      return await super.getThread(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        const thread = await this.db.get(params.userId, "threads", params.threadId);
-        if (thread) return thread;
-        return {
-          id: params.threadId,
-          name: "Main chat",
-          userId: params.userId,
-          agentId: params.agentId,
-          createdAt: new Date().toISOString(),
-          archived: false,
-        };
-      }
-      throw err;
-    }
+    const userId = params.userId || "local-user";
+    const thread = await this.db.get<any>(userId, "threads", params.threadId);
+    if (thread) return thread;
+    const isMain = String(params.threadId).includes("main");
+    return {
+      id: params.threadId,
+      name: isMain ? "Main chat" : "New conversation",
+      userId,
+      agentId: params.agentId || "default",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      archived: false,
+    };
   }
 
   override async createThread(params: any): Promise<any> {
-    try {
-      return await super.createThread(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        const thread = {
-          id: params.threadId,
-          name: params.name || "Main chat",
-          userId: params.userId,
-          agentId: params.agentId,
-          createdAt: new Date().toISOString(),
-          archived: false,
-        };
-        await this.db.put(params.userId, "threads", thread);
-        return thread;
-      }
-      throw err;
-    }
+    const userId = params.userId || "local-user";
+    const isMain = String(params.threadId).includes("main");
+    const thread = {
+      id: params.threadId,
+      name: params.name || (isMain ? "Main chat" : "New conversation"),
+      userId,
+      agentId: params.agentId || "default",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      archived: false,
+    };
+    await this.db.put(userId, "threads", thread);
+    return thread;
   }
 
   override async getThreadMessages(params: any): Promise<any> {
-    try {
-      return await super.getThreadMessages(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        const saved = await this.db.get<{ messages: any[] }>(
-          params.userId,
-          "conversations",
-          params.threadId,
-        );
-        return { messages: saved?.messages ?? [] };
-      }
-      throw err;
-    }
+    const userId = params.userId || "local-user";
+    const saved = await this.db.get<{ messages: any[] }>(
+      userId,
+      "conversations",
+      params.threadId,
+    );
+    return { messages: saved?.messages ?? [] };
   }
 
   override async listThreads(params: any): Promise<any> {
-    try {
-      return await super.listThreads(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        const threads = (await this.db.list(params.userId, "threads")) ?? [];
-        return { threads };
-      }
-      throw err;
-    }
+    const userId = params.userId || "local-user";
+    const all = (await this.db.list<any>(userId, "threads")) ?? [];
+    const threads = all
+      .filter((t: any) => (params.includeArchived ? true : !t.archived))
+      .sort((a: any, b: any) =>
+        (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || ""),
+      );
+    return {
+      threads,
+      joinCode: "local-join-code",
+      joinToken: "local-join-token",
+      nextCursor: null,
+    };
   }
 
   override async updateThread(params: any): Promise<any> {
-    try {
-      return await super.updateThread(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        const existing =
-          (await this.db.get(params.userId, "threads", params.threadId)) ?? {};
-        const updated = { ...existing, ...params, id: params.threadId };
-        await this.db.put(params.userId, "threads", updated);
-        return { thread: updated };
-      }
-      throw err;
-    }
+    const userId = params.userId || "local-user";
+    const existing = (await this.db.get<any>(userId, "threads", params.threadId)) ?? {};
+    const updates = params.updates ?? params;
+    const updated = {
+      ...existing,
+      ...updates,
+      id: params.threadId,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.db.put(userId, "threads", updated);
+    return updated;
   }
 
   override async archiveThread(params: any): Promise<any> {
-    try {
-      return await super.archiveThread(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        const existing = (await this.db.get<{ id: string; [key: string]: unknown }>(
-          params.userId,
-          "threads",
-          params.threadId,
-        )) ?? { id: params.threadId };
-        await this.db.put(params.userId, "threads", { ...existing, archived: true });
-        return;
-      }
-      throw err;
-    }
+    const userId = params.userId || "local-user";
+    const existing = (await this.db.get<any>(userId, "threads", params.threadId)) ?? {
+      id: params.threadId,
+    };
+    await this.db.put(userId, "threads", {
+      ...existing,
+      archived: true,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   override async deleteThread(params: any): Promise<any> {
-    try {
-      return await super.deleteThread(params);
-    } catch (err: any) {
-      if (isAuthOrCloudFailure(err)) {
-        await this.db.remove(params.userId, "threads", params.threadId);
-        return;
-      }
-      throw err;
-    }
+    const userId = params.userId || "local-user";
+    await this.db.remove(userId, "threads", params.threadId);
+    await this.db.remove(userId, "conversations", params.threadId);
   }
 
   override async annotate(_params: any): Promise<any> {
     return { ok: true };
   }
 
+  override async getInspectorMetadata(): Promise<any> {
+    return undefined;
+  }
+
+  override async getRuntimeEntitlements(): Promise<any> {
+    return {
+      status: "ready",
+      entitlement: {
+        source: "selfHosted",
+        active: true,
+      },
+    };
+  }
+
+  override async ɵsubscribeToThreads(): Promise<any> {
+    return {
+      joinCode: "local-join-code",
+      joinToken: "local-join-token",
+    };
+  }
+
+  override async ɵsubscribeToMemories(): Promise<any> {
+    return {
+      joinCode: "local-join-code",
+      joinToken: "local-join-token",
+    };
+  }
+
   override async ɵacquireThreadLock(params: any): Promise<any> {
-    try {
-      return await super.ɵacquireThreadLock(params);
-    } catch {
-      return {
-        threadId: params.threadId,
-        runId: params.runId,
-        joinToken: "local-join-token",
-      };
-    }
+    return {
+      threadId: params.threadId,
+      runId: params.runId,
+      joinToken: "local-join-token",
+    };
   }
 
-  override async ɵcleanupThreadLock(params: any): Promise<any> {
-    try {
-      return await super.ɵcleanupThreadLock(params);
-    } catch {
-      return;
-    }
+  override async ɵcleanupThreadLock(_params: any): Promise<any> {
+    return;
   }
 
-  override async ɵrenewThreadLock(params: any): Promise<any> {
-    try {
-      return await super.ɵrenewThreadLock(params);
-    } catch {
-      return { renewed: true };
-    }
+  override async ɵrenewThreadLock(_params: any): Promise<any> {
+    return { renewed: true };
   }
 
   override async ɵconnectThread(params: any): Promise<any> {
-    try {
-      return await super.ɵconnectThread(params);
-    } catch {
-      return { ok: true };
-    }
+    return {
+      threadId: params.threadId,
+      joinToken: "local-join-token",
+    };
+  }
+
+  override ɵgetClientWsUrl(): string {
+    return "";
   }
 }
