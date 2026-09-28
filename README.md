@@ -59,7 +59,35 @@ The computer combines **persistent Chromium and an optional Linux workspace**. T
 
 The [feature inventory](docs/FEATURES.md) describes implemented capabilities and planned extensions. Health/bank/social connectors, device push, voice, generated executable tools, and automatic reservations/payments are on the [roadmap](ROADMAP.md).
 
-## Quick start
+## Native macOS Edition
+
+This repository contains custom optimizations turning OpenMuse into a native desktop application for macOS:
+
+* **Native AppKit Client**: Built with Swift and WebKit (`native/OpenMuseApp.swift`). Runs in its own macOS application window with native menu bar, keyboard shortcuts, and Dock integration.
+* **Agnes AI & Custom Gateway Support**: Direct OpenAI Chat Completions streaming adapter for `agnes-3.0-flash` (`https://apihub.agnes-ai.com/v1`) and custom OpenAI-compatible models.
+* **Offline Local Thread Fallback**: Seamless conversation persistence backed by local PostgreSQL/PGlite database. No CopilotKit Cloud project key or Phoenix WebSockets required when `RICH_THREADS=false`.
+* **One-Click Build & Launcher**: Quick compile via `pnpm build:mac` installing directly to `/Applications/OpenMuse.app` and `~/Desktop/OpenMuse.app`.
+
+See [docs/MACOS-NATIVE.md](docs/MACOS-NATIVE.md) and [CHANGELOG.md](CHANGELOG.md) for full technical documentation.
+
+## Quick start (Native macOS)
+
+```sh
+# 1. Install dependencies
+pnpm install
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your model settings (e.g. Agnes AI or OpenAI)
+
+# 3. Build the native macOS app and web bundle
+pnpm build:mac
+
+# 4. Start the backend and open the native app
+./start-all.sh
+```
+
+## Quick start (Web & Standard)
 
 **Requirements:** Node 24 LTS, pnpm 11.19.0, and a CopilotKit Intelligence project key. The local sample app needs no model, Google account, or Docker.
 
