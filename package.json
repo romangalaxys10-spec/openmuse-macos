@@ -21,6 +21,8 @@
     "build:server": "tsc -p tsconfig.build.json",
     "start": "node dist/apps/server/src/index.js",
     "build:web": "pnpm --dir apps/mobile build:web",
+    "build:mac": "pnpm build:web && pnpm build:server && ./scripts/build-app.sh",
+    "app": "open /Users/d/Applications/OpenMuse.app",
     "build:ios": "pnpm --dir apps/mobile build:ios",
     "build:android": "pnpm --dir apps/mobile build:android",
     "dev:worker": "tsx apps/server/src/worker-entry.ts",

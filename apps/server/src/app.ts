@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { MessageSchema } from "@ag-ui/core";
 import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { LocalIntelligence } from "./engine/local-intelligence.ts";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -41,13 +45,40 @@ export async function createApp(
   const browser = new BrowserService(db, config, auth, files);
   const computer = new ComputerService(db, config, options.docker);
   const agent = new AgentService(db, config, workspace, files, actions, browser, computer);
-  const intelligence = new CopilotKitIntelligence({ apiKey: config.intelligenceApiKey });
+  const intelligence = new LocalIntelligence(db, { apiKey: config.intelligenceApiKey });
   const runtime = makeRuntime(config, agent, auth, intelligence);
   const app = new Hono<{ Variables: { owner: string } }>();
   const origins = new Set([...config.allowedOrigins, new URL(config.publicUrl).origin]);
+  const isAllowedOrigin = (origin?: string): boolean => {
+    if (!origin) return true;
+    if (origins.has(origin)) return true;
+    if (origin === "null") return true;
+    if (
+      origin.startsWith("file://") ||
+      origin.startsWith("app://") ||
+      origin.startsWith("openmuse://") ||
+      origin.startsWith("capacitor://")
+    ) {
+      return true;
+    }
+    try {
+      const url = new URL(origin);
+      if (
+        url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname === "::1" ||
+        url.hostname === "[::1]"
+      ) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  };
   app.use("*", async (c, next) => {
     const origin = c.req.header("origin");
-    if (origin && !origins.has(origin)) return c.json({ error: "Origin is not allowed" }, 403);
+    if (origin && !isAllowedOrigin(origin)) return c.json({ error: "Origin is not allowed" }, 403);
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "no-referrer");
     c.header("Cache-Control", "no-store");
@@ -56,7 +87,7 @@ export async function createApp(
   app.use(
     "*",
     cors({
-      origin: (origin) => (origins.has(origin) ? origin : undefined),
+      origin: (origin) => (isAllowedOrigin(origin) ? (origin || "*") : undefined),
       allowHeaders: ["Content-Type", "Authorization"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       credentials: true,
@@ -203,6 +234,9 @@ export async function createApp(
     );
   });
   app.get("/api/main-thread", async (c) => {
+    if (config.richThreads === false) {
+      return c.json({ threadId: "local-main", existing: true });
+    }
     const owner = c.get("owner");
     await db.insertIfAbsent(owner, "conversation-settings", {
       id: "main",
@@ -344,8 +378,14 @@ export async function createApp(
     );
     return new Response(body, { status: response.status, headers: response.headers });
   });
-  app.get("/", (c) =>
-    c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),
-  );
+  const webDist = resolve(process.cwd(), "apps/mobile/dist/web");
+  if (existsSync(webDist)) {
+    app.use("/*", serveStatic({ root: "./apps/mobile/dist/web" }));
+    app.get("*", serveStatic({ path: "./apps/mobile/dist/web/index.html" }));
+  } else {
+    app.get("/", (c) =>
+      c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),
+    );
+  }
   return { app, auth, files, actions, workspace, agent, computer };
 }

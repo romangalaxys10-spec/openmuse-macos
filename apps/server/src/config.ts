@@ -50,6 +50,7 @@ export interface Config {
   computerImage?: string;
   computerDeploymentId?: string;
   allowedOrigins: string[];
+  richThreads?: boolean;
 }
 
 export const intelligenceKeyRequiredMessage =
@@ -118,6 +119,12 @@ export function readConfig(): Config {
     allowedOrigins: (
       process.env.ALLOWED_ORIGINS ?? "http://localhost:8081,http://127.0.0.1:8081"
     ).split(","),
+    richThreads:
+      process.env.RICH_THREADS === "false"
+        ? false
+        : process.env.RICH_THREADS === "true"
+          ? true
+          : !process.env.OPENAI_BASE_URL?.includes("agnes"),
   };
   if (
     mode === "live" &&
