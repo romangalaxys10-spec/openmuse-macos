@@ -172,14 +172,18 @@ export class BrowserService {
     return this.serial(id, () => this.readOwned(owner, id));
   }
   async observe(owner: string, url: string, existingId?: string) {
-    const id = existingId ?? (await this.create(owner, url)).id;
+    const cleanUrl = url.trim();
+    const targetUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
+    const id = existingId ?? (await this.create(owner, targetUrl)).id;
     return this.serial(id, async () => {
-      if (existingId) await this.openOwned(owner, id, url);
+      if (existingId) await this.openOwned(owner, id, targetUrl);
       return { sessionId: id, ...(await this.readOwned(owner, id)) };
     });
   }
   async observeForThread(owner: string, threadId: string, url: string, signal?: AbortSignal) {
     signal?.throwIfAborted();
+    const cleanUrl = url.trim();
+    const targetUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
     // Persist the association before contacting the worker so failed/lost responses
     // and later chat turns keep using the same profile instead of exhausting its limit.
     const association =
@@ -193,14 +197,14 @@ export class BrowserService {
     const id = association.sessionId;
     await this.db.insertIfAbsent(owner, "browsers", {
       id,
-      url,
+      url: targetUrl,
       title: "New browser session",
       status: "idle",
       updatedAt: new Date().toISOString(),
     });
     return this.serial(id, async () => {
       signal?.throwIfAborted();
-      await this.openOwned(owner, id, url, signal);
+      await this.openOwned(owner, id, targetUrl, signal);
       signal?.throwIfAborted();
       const page = await this.readOwned(owner, id, signal);
       signal?.throwIfAborted();
@@ -219,17 +223,37 @@ export class BrowserService {
     });
   }
   async preview(owner: string, id: string) {
-    await this.get(owner, id);
-    return this.request(`/sessions/${id}/screenshot`);
+    const session = await this.get(owner, id);
+    try {
+      return await this.request(`/sessions/${id}/screenshot`);
+    } catch (error) {
+      if (error instanceof AppError && (error.status === 409 || error.status === 502)) {
+        await this.reopen(owner, id, session.url);
+        return await this.request(`/sessions/${id}/screenshot`);
+      }
+      throw error;
+    }
   }
   async input(owner: string, id: string, value: unknown) {
     return this.serial(id, async () => {
-      await this.get(owner, id);
-      return this.save(
-        owner,
-        await (await this.request(`/sessions/${id}/input`, value)).json(),
-        id,
-      );
+      const session = await this.get(owner, id);
+      try {
+        return await this.save(
+          owner,
+          await (await this.request(`/sessions/${id}/input`, value)).json(),
+          id,
+        );
+      } catch (error) {
+        if (error instanceof AppError && (error.status === 409 || error.status === 502)) {
+          await this.openOwned(owner, id, session.url);
+          return await this.save(
+            owner,
+            await (await this.request(`/sessions/${id}/input`, value)).json(),
+            id,
+          );
+        }
+        throw error;
+      }
     });
   }
   async imports(owner: string, id: string) {

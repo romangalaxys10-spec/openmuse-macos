@@ -54,7 +54,11 @@ export async function validatePublicUrl(
     );
   let url: URL;
   try {
-    url = new URL(value);
+    const trimmed = value.trim();
+    const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
+    url = new URL(candidate);
   } catch {
     throw blocked();
   }

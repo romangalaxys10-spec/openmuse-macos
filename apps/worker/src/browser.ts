@@ -38,7 +38,11 @@ export async function createBrowserManager(options: {
   maxSessions?: number;
   idleTimeoutMs?: number;
 }) {
-  const { dataDir, maxSessions = 3, idleTimeoutMs = 30 * 60_000 } = options;
+  const {
+    dataDir,
+    maxSessions = Number(process.env.MAX_BROWSER_SESSIONS) || 10,
+    idleTimeoutMs = 30 * 60_000,
+  } = options;
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const sessions = new Map<string, Session>();
   const running = new Map<string, Running>();
@@ -152,18 +156,28 @@ export async function createBrowserManager(options: {
   async function createSession(id: string, url: string) {
     await validatePublicUrl(url);
     if (running.has(id)) return navigate(id, url);
-    if (running.size >= maxSessions)
-      throw new WorkerError(
-        "SESSION_LIMIT",
-        `Close an active session before opening another (limit ${maxSessions}).`,
-        409,
-      );
-    if (!sessions.has(id) && sessions.size >= 20)
-      throw new WorkerError(
-        "PROFILE_LIMIT",
-        "The worker has reached its 20 saved-profile limit.",
-        409,
-      );
+    if (running.size >= maxSessions) {
+      let oldestId: string | undefined;
+      let oldestTime = Infinity;
+      for (const [rId, rSession] of running) {
+        if (rId !== id && rSession.touched < oldestTime) {
+          oldestTime = rSession.touched;
+          oldestId = rId;
+        }
+      }
+      if (oldestId) {
+        await closeSession(oldestId).catch(() => {});
+      }
+    }
+    if (!sessions.has(id) && sessions.size >= 50) {
+      for (const [sId, sData] of sessions) {
+        if (sData.status === "closed" && !running.has(sId)) {
+          sessions.delete(sId);
+          await rm(directory(sId), { recursive: true, force: true }).catch(() => {});
+          break;
+        }
+      }
+    }
     const previous = sessions.get(id);
     const profileDir = join(directory(id), "profile");
     const tempDirectory = join("/tmp", `openmuse-downloads-${id}`);

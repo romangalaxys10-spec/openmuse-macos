@@ -4,7 +4,7 @@ const token = process.env.WORKER_TOKEN ?? "";
 const worker = await createWorkerServer({
   token,
   dataDir: process.env.WORKER_DATA_DIR ?? ".openmuse/browser-profiles",
-  maxSessions: 3,
+  maxSessions: Number(process.env.MAX_BROWSER_SESSIONS) || 10,
   idleTimeoutMs: 30 * 60_000,
 });
 worker.server.listen(8790, process.env.WORKER_HOST ?? "127.0.0.1", () => {

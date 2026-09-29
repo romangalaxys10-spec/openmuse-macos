@@ -20,8 +20,13 @@ const image=document.querySelector('#screen'),error=document.querySelector('#err
 let refreshing=false,sending=false,imageUrl,live=false,previewError=false;
 function controls(){document.querySelectorAll('nav button,#type').forEach(button=>button.disabled=sending||!live);image.classList.toggle('stale',!live||sending);}
 async function refresh(){if(refreshing||sending||document.hidden)return;refreshing=true;try{
-const r=await fetch(${preview},{cache:'no-store',signal:AbortSignal.timeout(20000)});
-if(!r.ok)throw new Error(r.status===401?'Session access expired. Close this view and open the browser again.':'Browser disconnected. Reopen the session from OpenMuse.');
+let r=await fetch(${preview},{cache:'no-store',signal:AbortSignal.timeout(20000)});
+if(!r.ok){
+  if(r.status===401)throw new Error('Session access expired. Close this view and open the browser again.');
+  await new Promise(res=>setTimeout(res, 1200));
+  const retry=await fetch(${preview},{cache:'no-store',signal:AbortSignal.timeout(20000)}).catch(()=>null);
+  if(retry&&retry.ok){r=retry;}else{throw new Error('Browser reconnecting… please wait a moment.');}
+}
 const blob=await r.blob();const next=URL.createObjectURL(blob);await new Promise((resolve,reject)=>{const probe=new Image();probe.onload=resolve;probe.onerror=()=>{URL.revokeObjectURL(next);reject(new Error('The browser preview could not be displayed.'));};probe.src=next;});
 if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=next;image.src=next;live=true;status.textContent='Live';status.className='live';if(previewError){error.textContent='';previewError=false;}
 }catch(e){live=false;previewError=true;status.textContent='Disconnected';status.className='';error.textContent=e.message;}finally{refreshing=false;controls();}}

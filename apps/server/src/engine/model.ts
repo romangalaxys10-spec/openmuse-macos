@@ -166,11 +166,12 @@ export async function executeModelTask(
     tool(
       "read_web",
       "Read a public webpage in the agent browser",
-      z.object({ url: z.url() }),
+      z.object({ url: z.string().trim().min(1).max(4096) }),
       async ({ url }) => {
+        const normalized = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`;
         const page = await service.browser.observe(
           owner,
-          url,
+          normalized,
           typeof task.state.browserId === "string" ? task.state.browserId : undefined,
         );
         task = await ctx.checkpoint({
