@@ -49,9 +49,20 @@ export function makeRuntime(
               await auth.owner(request.headers.get("authorization") ?? undefined),
             ),
   });
-  const runtime = new CopilotRuntime({
-    agents,
-  });
+  const runtime =
+    config.richThreads !== false
+      ? new CopilotRuntime({
+          agents,
+          intelligence,
+          identifyUser: async (request) => ({
+            id: await auth.owner(request.headers.get("authorization") ?? undefined),
+            name: "OpenMuse user",
+          }),
+          generateThreadNames: false,
+        })
+      : new CopilotRuntime({
+          agents,
+        });
   const multiHandler = createCopilotHonoHandler({
     runtime,
     basePath: "/api/copilotkit",

@@ -13,6 +13,9 @@ import { type OpenAIChatModel, openaiChatCompletions, openaiText } from "@tansta
 import { map, mergeMap, type Observable } from "rxjs";
 import { z } from "zod";
 import { MODEL_MAX_RETRIES } from "../config.ts";
+import { createResilientFetch, sanitizeJsonArguments } from "./resilient-model.ts";
+
+const resilientFetch = createResilientFetch();
 
 // Same "provider/model" strings, env vars and base URL formats as the AI SDK resolver in
 // @copilotkit/runtime. Each provider SDK retries transient failures up to MODEL_MAX_RETRIES times.
@@ -29,10 +32,12 @@ function adapter(spec: string) {
         ? openaiChatCompletions(id as any, {
             baseURL: process.env.OPENAI_BASE_URL,
             maxRetries: MODEL_MAX_RETRIES,
+            fetch: resilientFetch,
           })
         : openaiText(id as OpenAIChatModel, {
             baseURL: process.env.OPENAI_BASE_URL,
             maxRetries: MODEL_MAX_RETRIES,
+            fetch: resilientFetch,
           });
     case "anthropic":
       // The AI SDK base URL ends in /v1; the Anthropic SDK adds /v1 itself.
@@ -114,7 +119,39 @@ export function tanstackAgent(options: {
   const agent = new BuiltInAgent({
     type: "tanstack",
     factory: ({ input, abortController }) => {
+      // Pre-sanitize input.messages so convertInputToTanStackAI never sees malformed arguments or snake_case tool_calls
+      if (Array.isArray(input.messages)) {
+        for (const msg of input.messages) {
+          if (msg && msg.role === "assistant") {
+            const rawMsg = msg as any;
+            if (Array.isArray(rawMsg.tool_calls) && !Array.isArray(rawMsg.toolCalls)) {
+              rawMsg.toolCalls = rawMsg.tool_calls;
+            }
+            if (Array.isArray(rawMsg.toolCalls)) {
+              for (const tc of rawMsg.toolCalls) {
+                if (tc && tc.function) {
+                  tc.function.arguments = sanitizeJsonArguments(tc.function.arguments);
+                }
+              }
+            }
+          }
+        }
+      }
+
       const converted = convertInputToTanStackAI(input);
+
+      // Post-sanitize converted.messages for TanStack AI chat
+      if (Array.isArray(converted.messages)) {
+        for (const msg of converted.messages) {
+          if (msg && msg.role === "assistant" && Array.isArray((msg as any).toolCalls)) {
+            for (const tc of (msg as any).toolCalls) {
+              if (tc && tc.function) {
+                tc.function.arguments = sanitizeJsonArguments(tc.function.arguments);
+              }
+            }
+          }
+        }
+      }
       // Build the system prompt like the classic mode. It does not forward system messages.
       let system = options.prompt;
       if (input.context.length) {

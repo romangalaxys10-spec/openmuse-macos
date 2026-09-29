@@ -81,7 +81,7 @@ export function assertApiDeploymentConfig(
 // attempt, and a stream that fails after it starts is not retried. External
 // writes never re-fire here: they are dispatched outside the model loop through
 // reviewed, idempotency-keyed actions.
-export const MODEL_MAX_RETRIES = 2;
+export const MODEL_MAX_RETRIES = Number(process.env.MODEL_MAX_RETRIES ?? 2);
 export function readConfig(): Config {
   const mode = process.env.WORKSPACE_MODE ?? "sample";
   if (mode !== "sample" && mode !== "live")
