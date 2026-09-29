@@ -24,6 +24,7 @@ import { AgentService } from "./engine/service.ts";
 import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
+import { openbotRoutes } from "./openbot-backend.ts";
 import { WorkspaceService } from "./workspace.ts";
 
 export async function createApp(
@@ -164,10 +165,23 @@ export async function createApp(
       /^\/api\/files\/[^/]+\/content$|^\/api\/browsers\/[^/]+\/(?:preview|console)$/.test(
         c.req.path,
       );
-    const owner =
-      signedRoute && c.req.query("signature")
-        ? auth.verify(new URL(c.req.url))
-        : await auth.owner(c.req.header("authorization"));
+    const isOpenBot = c.req.path.startsWith("/api/openbot");
+    let owner = "local-user";
+    if (signedRoute && c.req.query("signature")) {
+      owner = auth.verify(new URL(c.req.url));
+    } else if (isOpenBot) {
+      try {
+        owner = await auth.owner(c.req.header("authorization"));
+      } catch (e) {
+        if (config.mode === "sample" || !config.accessKey) {
+          owner = "local-user";
+        } else {
+          throw e;
+        }
+      }
+    } else {
+      owner = await auth.owner(c.req.header("authorization"));
+    }
     c.set("owner", owner);
     await next();
   });
@@ -187,6 +201,7 @@ export async function createApp(
   });
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
+  app.route("/api/openbot", openbotRoutes(browser, computer, config));
   app.get("/api/calendars", async (c) => c.json(await workspace.calendars(c.get("owner"))));
   app.get("/api/calendar/events", async (c) => {
     const query = z

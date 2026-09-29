@@ -51,6 +51,9 @@ export interface Config {
   computerDeploymentId?: string;
   allowedOrigins: string[];
   richThreads?: boolean;
+  openbotEnabled?: boolean;
+  openbotUrl?: string;
+  openbotAgentId?: string;
 }
 
 export const intelligenceKeyRequiredMessage =
@@ -125,6 +128,9 @@ export function readConfig(): Config {
         : process.env.RICH_THREADS === "true"
           ? true
           : !process.env.OPENAI_BASE_URL?.includes("agnes"),
+    openbotEnabled: process.env.OPENBOT_ENABLED !== "false",
+    openbotUrl: process.env.OPENBOT_URL ?? `${publicUrl}/api/openbot`,
+    openbotAgentId: process.env.OPENBOT_AGENT_ID ?? "default",
   };
   if (
     mode === "live" &&

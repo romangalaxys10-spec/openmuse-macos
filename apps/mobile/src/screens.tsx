@@ -1211,6 +1211,8 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
   }
   const google = w.connections.find((c) => c.id === "google");
   const connected = google?.status === "connected" || google?.status === "sample";
+  const openbot = w.connections.find((c) => c.id === "openbot");
+  const openbotConnected = openbot?.status === "connected" || openbot?.status === "sample";
   const rows = [
     { id: "gmail", name: "Gmail", icon: Mail, color: "#EA5B4D", connected, group: "google" },
     {
@@ -1234,7 +1236,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
       name: "OpenBot",
       icon: Sparkles,
       color: "#6866A6",
-      connected: false,
+      connected: openbotConnected,
       group: "openbot",
     },
   ].filter((row) => `${row.name} ${row.group}`.toLowerCase().includes(query.toLowerCase()));
@@ -1309,7 +1311,13 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
       {selected && (
         <Sheet
           title={selected === "google" ? "Google connections" : "OpenBot"}
-          subtitle={selected === "google" ? google?.account : "A computer for your agent"}
+          subtitle={
+            selected === "google"
+              ? google?.account
+              : openbotConnected
+                ? "Embedded execution backend active"
+                : "A computer for your agent"
+          }
           onClose={() => setSelected(undefined)}
         >
           {selected === "google" ? (
@@ -1353,6 +1361,29 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                 label="Rich Threads"
                 value={w.runtime.richThreads ? "CopilotKit Intelligence" : "Not connected"}
               />
+              <Button
+                small
+                icon={ArrowDownToLine}
+                onPress={() => void refresh().catch((e) => setError(String(e)))}
+              >
+                Refresh connections
+              </Button>
+            </View>
+          ) : openbotConnected ? (
+            <View style={{ gap: 14 }}>
+              <Text style={s.muted}>
+                OpenBot is configured as an embedded execution backend inside OpenMuse, providing
+                autonomous agent orchestration, computer control, and CopilotKit runtime integration.
+              </Text>
+              <View style={[s.row, { gap: 7, flexWrap: "wrap" }]}>
+                {openbot?.capabilities.map((cap) => (
+                  <Chip key={cap}>{cap}</Chip>
+                ))}
+              </View>
+              <SettingsLine label="Backend" value="Embedded OpenBot Engine" />
+              <SettingsLine label="Status" value="Connected & Ready" />
+              <SettingsLine label="Computer" value="Active (Chromium Worker)" />
+              <SettingsLine label="Protocol" value="CopilotKit v2 / AG-UI" />
               <Button
                 small
                 icon={ArrowDownToLine}

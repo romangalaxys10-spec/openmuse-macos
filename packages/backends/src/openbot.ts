@@ -341,3 +341,39 @@ function httpUrl(value: string): string {
   }
   return url.toString();
 }
+
+/** Creates a transport connecting to the embedded OpenBot backend within OpenMuse. */
+export function createLocalOpenBotTransport(
+  baseUrl = "http://127.0.0.1:8787/api/openbot",
+  token?: string,
+): OpenBotTransport {
+  return {
+    runtimeUrl: `${baseUrl.replace(/\/+$/, "")}/copilotkit`,
+    async request(path: string, init: RequestInit = {}): Promise<Response> {
+      const headers = new Headers(init.headers);
+      if (token && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+      const cleanBase = baseUrl.replace(/\/+$/, "");
+      const cleanPath = path.startsWith("/") ? path : `/${path}`;
+      return fetch(`${cleanBase}${cleanPath}`, {
+        ...init,
+        headers,
+      });
+    },
+  };
+}
+
+/** Helper to instantiate a configured OpenBot adapter connected to the embedded backend. */
+export function createEmbeddedOpenBotAdapter(
+  baseUrl = "http://127.0.0.1:8787/api/openbot",
+  agentId = "default",
+  token?: string,
+): OpenBotAdapter {
+  return new OpenBotAdapter({
+    enabled: true,
+    agentId,
+    transport: createLocalOpenBotTransport(baseUrl, token),
+  });
+}
+

@@ -76,6 +76,7 @@ export function makeRuntime(
   return {
     async fetch(request: Request) {
       let isSingle = false;
+      let singleMethod: string | undefined;
       let clone: Request | undefined;
       try {
         clone = request.clone();
@@ -85,19 +86,45 @@ export function makeRuntime(
             const body = await request.clone().json().catch(() => null);
             if (body && typeof body.method === "string") {
               isSingle = true;
+              singleMethod = body.method;
             }
           }
         }
       } catch {}
 
+      let res: Response;
       if (isSingle) {
-        const res = await singleHandler.fetch(request);
+        res = await singleHandler.fetch(request);
         if (res.status === 404 && clone) {
-          return multiHandler.fetch(clone);
+          res = await multiHandler.fetch(clone);
         }
-        return res;
+      } else {
+        res = await multiHandler.fetch(request);
       }
-      return multiHandler.fetch(request);
+
+      const pathname = new URL(request.url).pathname;
+      const isInfo =
+        (!isSingle && pathname.endsWith("/info")) ||
+        (isSingle && singleMethod === "info");
+
+      if (isInfo && res.status === 200) {
+        try {
+          const data = await res.json();
+          data.mode = "sse";
+          if (data.threadEndpoints) {
+            data.threadEndpoints.realtimeMetadata = false;
+          }
+          return new Response(JSON.stringify(data), {
+            status: res.status,
+            statusText: res.statusText,
+            headers: res.headers,
+          });
+        } catch {
+          return res;
+        }
+      }
+
+      return res;
     },
   };
 }

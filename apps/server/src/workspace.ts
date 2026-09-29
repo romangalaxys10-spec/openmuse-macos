@@ -315,14 +315,20 @@ export class WorkspaceService {
         {
           id: "openbot",
           name: "OpenBot",
-          status: "unconfigured",
-          capabilities: ["Integration adapter available"],
+          status: this.config.openbotEnabled !== false ? "connected" : "unconfigured",
+          account: "Embedded OpenBot",
+          capabilities: [
+            "Autonomous agent orchestration",
+            "Computer & browser control",
+            "Durable channel execution",
+            "CopilotKit Intelligence v2",
+          ],
         },
       ],
       runtime: {
         provider: this.config.agentBackend === "sample" ? "sample" : "model",
         configured: agentConfigured(this.config),
-        openbotConfigured: false,
+        openbotConfigured: this.config.openbotEnabled !== false,
         richThreads: this.config.richThreads ?? true,
       },
     };
