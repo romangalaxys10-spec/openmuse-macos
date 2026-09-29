@@ -4,6 +4,7 @@ export type WorkspaceMode = "sample" | "live";
 export type Section =
   | "today"
   | "chat"
+  | "projects"
   | "mail"
   | "calendar"
   | "browser"
@@ -13,6 +14,37 @@ export type Section =
   | "ideas"
   | "goals"
   | "apps";
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  status: "active" | "archived";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectTask {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string;
+  status: "todo" | "in_progress" | "done" | "cancelled";
+  priority?: "low" | "medium" | "high";
+  threadId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SessionMeta {
+  id: string;
+  name?: string;
+  archived?: boolean;
+  tags?: string[];
+  projectId?: string;
+  updatedAt?: string;
+}
 export interface Mail {
   id: string;
   threadId: string;

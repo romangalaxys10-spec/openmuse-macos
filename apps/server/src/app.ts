@@ -292,6 +292,136 @@ export async function createApp(
     await db.put(c.get("owner"), "conversations", { id, messages });
     return c.json({ ok: true });
   });
+
+  // --- Projects & Tasks (ZCode style) ---
+  app.get("/api/projects", async (c) => {
+    return c.json(await db.list(c.get("owner"), "projects"));
+  });
+  app.post("/api/projects", async (c) => {
+    const body = await c.req.json();
+    const project = {
+      id: body.id || randomUUID(),
+      name: String(body.name || "Untitled Project").slice(0, 100),
+      description: body.description ? String(body.description).slice(0, 500) : "",
+      color: body.color || "blue",
+      status: body.status || "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await db.put(c.get("owner"), "projects", project);
+    return c.json(project, 201);
+  });
+  app.patch("/api/projects/:id", async (c) => {
+    const id = c.req.param("id");
+    const owner = c.get("owner");
+    const existing = (await db.get(owner, "projects", id)) ?? { id };
+    const body = await c.req.json();
+    const updated = {
+      ...existing,
+      ...body,
+      id,
+      updatedAt: new Date().toISOString(),
+    };
+    await db.put(owner, "projects", updated);
+    return c.json(updated);
+  });
+  app.delete("/api/projects/:id", async (c) => {
+    const id = c.req.param("id");
+    const owner = c.get("owner");
+    await db.remove(owner, "projects", id);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/projects/:id/tasks", async (c) => {
+    const projectId = c.req.param("id");
+    const all = await db.list<any>(c.get("owner"), "project-tasks");
+    return c.json(all.filter((t) => t.projectId === projectId));
+  });
+  app.get("/api/project-tasks", async (c) => {
+    return c.json(await db.list(c.get("owner"), "project-tasks"));
+  });
+  app.post("/api/project-tasks", async (c) => {
+    const body = await c.req.json();
+    const task = {
+      id: body.id || randomUUID(),
+      projectId: body.projectId || "default",
+      title: String(body.title || "Untitled Task").slice(0, 200),
+      description: body.description ? String(body.description).slice(0, 1000) : "",
+      status: body.status || "todo",
+      priority: body.priority || "medium",
+      threadId: body.threadId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await db.put(c.get("owner"), "project-tasks", task);
+    return c.json(task, 201);
+  });
+  app.patch("/api/project-tasks/:id", async (c) => {
+    const id = c.req.param("id");
+    const owner = c.get("owner");
+    const existing = (await db.get(owner, "project-tasks", id)) ?? { id };
+    const body = await c.req.json();
+    const updated = {
+      ...existing,
+      ...body,
+      id,
+      updatedAt: new Date().toISOString(),
+    };
+    await db.put(owner, "project-tasks", updated);
+    return c.json(updated);
+  });
+  app.delete("/api/project-tasks/:id", async (c) => {
+    const id = c.req.param("id");
+    const owner = c.get("owner");
+    await db.remove(owner, "project-tasks", id);
+    return c.json({ ok: true });
+  });
+
+  // --- Thread Metadata (Tags, Project Link, Archive, Rename, Delete) ---
+  app.get("/api/threads/meta", async (c) => {
+    return c.json(await db.list(c.get("owner"), "thread-meta"));
+  });
+  app.get("/api/threads/:id/meta", async (c) => {
+    const id = c.req.param("id");
+    const meta = (await db.get(c.get("owner"), "thread-meta", id)) ?? { id, tags: [] };
+    return c.json(meta);
+  });
+  app.patch("/api/threads/:id/meta", async (c) => {
+    const id = c.req.param("id");
+    const owner = c.get("owner");
+    const body = await c.req.json();
+    const existing = (await db.get(owner, "thread-meta", id)) ?? { id };
+    const updated = {
+      ...existing,
+      ...body,
+      id,
+      updatedAt: new Date().toISOString(),
+    };
+    await db.put(owner, "thread-meta", updated);
+    if (body.name) {
+      await intelligence.updateThread({ threadId: id, userId: owner, updates: { name: body.name } }).catch(() => {});
+    }
+    if (body.archived) {
+      await intelligence.archiveThread({ threadId: id, userId: owner }).catch(() => {});
+    }
+    return c.json(updated);
+  });
+  app.delete("/api/threads/:id", async (c) => {
+    const id = c.req.param("id");
+    const owner = c.get("owner");
+    await intelligence.deleteThread({ threadId: id, userId: owner }).catch(() => {});
+    await db.remove(owner, "thread-meta", id);
+    await db.remove(owner, "conversations", id);
+    return c.json({ ok: true });
+  });
+  app.post("/api/threads/:id/archive", async (c) => {
+    const id = c.req.param("id");
+    const owner = c.get("owner");
+    await intelligence.archiveThread({ threadId: id, userId: owner }).catch(() => {});
+    const existing = (await db.get<any>(owner, "thread-meta", id)) ?? { id };
+    await db.put(owner, "thread-meta", { ...existing, id, archived: true, updatedAt: new Date().toISOString() });
+    return c.json({ ok: true });
+  });
   app.post("/api/files", async (c) => {
     const data = await c.req.parseBody();
     const file = data.file;

@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   Menu,
   MessageCircle,
+  FolderKanban,
   PanelsTopLeft,
   Plus,
   Shapes,
@@ -38,6 +39,7 @@ import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
+import { ProjectsScreen } from "./src/projects-screen";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { Sidebar } from "./src/sidebar";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
@@ -46,12 +48,17 @@ import { type Detail, useWorkspace, WorkspaceContext } from "./src/workspace";
 
 const nav: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: "chat", label: "Chat", icon: MessageCircle },
+  { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "activity", label: "Activity", icon: PanelsTopLeft },
   { id: "ideas", label: "Ideas", icon: Lightbulb },
   { id: "goals", label: "Goals", icon: SquareCheck },
   { id: "apps", label: "Apps", icon: Shapes },
 ];
 const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
+  projects: {
+    title: "Projects & Tasks",
+    subtitle: "Organize workstreams, tasks, and linked agent sessions.",
+  },
   activity: { title: "Activity", subtitle: "Plans, progress, decisions and results." },
   ideas: { title: "Ideas", subtitle: "Useful next steps, grounded in your world." },
   goals: {
@@ -280,21 +287,23 @@ function WorkspaceShell({
       : "Here when you need me";
   const title = titles[section] || titles.apps;
   const Screen =
-    section === "mail"
-      ? MailScreen
-      : section === "calendar"
-        ? CalendarScreen
-        : section === "browser"
-          ? BrowserScreen
-          : section === "files"
-            ? FilesScreen
-            : section === "activity"
-              ? AgentActivityScreen
-              : section === "ideas"
-                ? IdeasScreen
-                : section === "goals"
-                  ? GoalsScreen
-                  : AppsScreen;
+    section === "projects"
+      ? ProjectsScreen
+      : section === "mail"
+        ? MailScreen
+        : section === "calendar"
+          ? CalendarScreen
+          : section === "browser"
+            ? BrowserScreen
+            : section === "files"
+              ? FilesScreen
+              : section === "activity"
+                ? AgentActivityScreen
+                : section === "ideas"
+                  ? IdeasScreen
+                  : section === "goals"
+                    ? GoalsScreen
+                    : AppsScreen;
   const utility = ["mail", "calendar", "browser", "files"].includes(section);
   return (
     <>
