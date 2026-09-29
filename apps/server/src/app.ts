@@ -273,11 +273,23 @@ export async function createApp(
   app.get("/api/conversation", async (c) =>
     c.json((await db.get(c.get("owner"), "conversations", "default")) ?? { messages: [] }),
   );
+  app.get("/api/conversation/:id", async (c) => {
+    const id = c.req.param("id") || "default";
+    return c.json((await db.get(c.get("owner"), "conversations", id)) ?? { messages: [] });
+  });
   app.put("/api/conversation", async (c) => {
     const body = await c.req.json();
     const messages = z.array(z.unknown()).max(1000).parse(body.messages);
     for (const message of messages) MessageSchema.parse(message);
     await db.put(c.get("owner"), "conversations", { id: "default", messages });
+    return c.json({ ok: true });
+  });
+  app.put("/api/conversation/:id", async (c) => {
+    const id = c.req.param("id") || "default";
+    const body = await c.req.json();
+    const messages = z.array(z.unknown()).max(1000).parse(body.messages);
+    for (const message of messages) MessageSchema.parse(message);
+    await db.put(c.get("owner"), "conversations", { id, messages });
     return c.json({ ok: true });
   });
   app.post("/api/files", async (c) => {

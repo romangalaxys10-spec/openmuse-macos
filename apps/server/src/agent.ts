@@ -30,26 +30,30 @@ export function makeRuntime(
   auth: Auth,
   intelligence: CopilotKitIntelligence,
 ) {
-  const agents: AgentsFactory = async ({ request }) => ({
-    default:
+  const agents: AgentsFactory = async ({ request }) => {
+    const owner = await auth.owner(request.headers.get("authorization") ?? undefined);
+    const agentInstance =
       config.agentBackend === "sample"
-        ? new ConversationAgent(
-            config,
-            service,
-            await auth.owner(request.headers.get("authorization") ?? undefined),
-          )
+        ? new ConversationAgent(config, service, owner)
         : config.agentBackend === "agui"
           ? new HttpAgent({
               url: config.agentUrl ?? "http://127.0.0.1:1/unconfigured",
               headers: config.agentToken ? { Authorization: `Bearer ${config.agentToken}` } : {},
             })
-          : new ConversationAgent(
-              config,
-              service,
-              await auth.owner(request.headers.get("authorization") ?? undefined),
-            ),
-  });
-  const runtime =
+          : new ConversationAgent(config, service, owner);
+
+    return new Proxy(
+      { default: agentInstance },
+      {
+        get(target, prop: string) {
+          if (prop in target) return (target as any)[prop];
+          return agentInstance;
+        },
+      },
+    );
+  };
+
+  const richRuntime =
     config.richThreads !== false
       ? new CopilotRuntime({
           agents,
@@ -63,16 +67,31 @@ export function makeRuntime(
       : new CopilotRuntime({
           agents,
         });
-  const multiHandler = createCopilotHonoHandler({
-    runtime,
+
+  const sseRuntime = new CopilotRuntime({ agents });
+
+  const richMultiHandler = createCopilotHonoHandler({
+    runtime: richRuntime,
     basePath: "/api/copilotkit",
     mode: "multi-route",
   });
-  const singleHandler = createCopilotHonoHandler({
-    runtime,
+  const richSingleHandler = createCopilotHonoHandler({
+    runtime: richRuntime,
     basePath: "/api/copilotkit",
     mode: "single-route",
   });
+
+  const sseMultiHandler = createCopilotHonoHandler({
+    runtime: sseRuntime,
+    basePath: "/api/copilotkit",
+    mode: "multi-route",
+  });
+  const sseSingleHandler = createCopilotHonoHandler({
+    runtime: sseRuntime,
+    basePath: "/api/copilotkit",
+    mode: "single-route",
+  });
+
   return {
     async fetch(request: Request) {
       let isSingle = false;
@@ -92,17 +111,33 @@ export function makeRuntime(
         }
       } catch {}
 
+      const pathname = new URL(request.url).pathname;
+      const isRunOrConnect =
+        (!isSingle && (pathname.includes("/run") || pathname.includes("/connect"))) ||
+        (isSingle && (singleMethod === "agent/run" || singleMethod === "agent/connect"));
+
       let res: Response;
-      if (isSingle) {
-        res = await singleHandler.fetch(request);
-        if (res.status === 404 && clone) {
-          res = await multiHandler.fetch(clone);
+      if (isRunOrConnect) {
+        if (isSingle) {
+          res = await sseSingleHandler.fetch(request);
+          if (res.status === 404 && clone) {
+            res = await sseMultiHandler.fetch(clone);
+          }
+        } else {
+          res = await sseMultiHandler.fetch(request);
         }
-      } else {
-        res = await multiHandler.fetch(request);
+        return res;
       }
 
-      const pathname = new URL(request.url).pathname;
+      if (isSingle) {
+        res = await richSingleHandler.fetch(request);
+        if (res.status === 404 && clone) {
+          res = await richMultiHandler.fetch(clone);
+        }
+      } else {
+        res = await richMultiHandler.fetch(request);
+      }
+
       const isInfo =
         (!isSingle && pathname.endsWith("/info")) ||
         (isSingle && singleMethod === "info");

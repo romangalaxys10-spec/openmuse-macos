@@ -219,12 +219,30 @@ export function ChatScreen({
               () => copilotkit.connectAgent({ agent }),
               (onError) => copilotkit.subscribe({ onError }),
             );
+          if (agent.messages.length === 0) {
+            const { messages } = await api.request<{ messages: Message[] }>(
+              `/api/conversation/${encodeURIComponent(threadId)}`,
+            );
+            if (active && messages?.length) agent.setMessages(messages);
+          }
         } else {
-          const { messages } = await api.request<{ messages: Message[] }>("/api/conversation");
-          if (active) agent.setMessages(messages);
+          const { messages } = await api.request<{ messages: Message[] }>(
+            `/api/conversation/${encodeURIComponent(threadId)}`,
+          );
+          if (active && messages?.length) agent.setMessages(messages);
         }
         if (active) setLoaded(true);
       } catch (e) {
+        try {
+          const { messages } = await api.request<{ messages: Message[] }>(
+            `/api/conversation/${encodeURIComponent(threadId)}`,
+          );
+          if (active && messages?.length) {
+            agent.setMessages(messages);
+            setLoaded(true);
+            return;
+          }
+        } catch {}
         if (active) {
           setLoaded(false);
           setHistoryError(
@@ -239,11 +257,20 @@ export function ChatScreen({
       replay.unsubscribe();
       if (richThreads) void agent.detachActiveRun().catch(() => {});
     };
-  }, [agent, agentId, api, copilotkit, isReady, historyAttempt, richThreads, selection.existing]);
+  }, [agent, agentId, api, copilotkit, isReady, historyAttempt, richThreads, selection.existing, threadId]);
   const saveHistory = useCallback(async () => {
-    if (!richThreads) await api.request("/api/conversation", { messages: agent.messages }, "PUT");
+    try {
+      await api.request(
+        `/api/conversation/${encodeURIComponent(threadId)}`,
+        { messages: agent.messages },
+        "PUT",
+      );
+      if (threadId === mainId) {
+        await api.request("/api/conversation", { messages: agent.messages }, "PUT");
+      }
+    } catch {}
     setSaveError("");
-  }, [agent, api, richThreads]);
+  }, [agent.messages, api, mainId, threadId]);
   const run = useCallback(
     async (message?: QueuedMessage) => {
       if (runLock.current || agent.isRunning || !isReady || !loaded)

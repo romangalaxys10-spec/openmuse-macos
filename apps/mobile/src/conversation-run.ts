@@ -8,7 +8,12 @@ export async function runConversationTurn(
 ) {
   let failure: Error | undefined;
   const subscription = subscribe((event) => {
-    if (event.context?.agentId && event.context.agentId !== agentId) return;
+    if (
+      event.context?.agentId &&
+      event.context.agentId !== agentId &&
+      event.context.agentId !== "default"
+    )
+      return;
     failure = event.error instanceof Error ? event.error : new Error(String(event.error));
   });
   try {

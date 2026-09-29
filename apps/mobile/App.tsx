@@ -39,6 +39,7 @@ import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
+import { Sidebar } from "./src/sidebar";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
 import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from "./src/ui";
 import { type Detail, useWorkspace, WorkspaceContext } from "./src/workspace";
@@ -256,6 +257,10 @@ function WorkspaceShell({
   const [threadsOpen, setThreadsOpen] = useState(false);
   const { width } = useWindowDimensions();
   const desktop = width >= 900;
+  const [sidebarOpen, setSidebarOpen] = useState(desktop);
+  useEffect(() => {
+    setSidebarOpen(desktop);
+  }, [desktop]);
   const pending =
     (data?.notifications.filter((n) => !n.read).length || 0) +
     workspace.actions.filter((a) => a.status === "awaiting_review").length;
@@ -295,31 +300,36 @@ function WorkspaceShell({
     <>
       <WorkspaceTools />
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
-        <View style={{ flex: 1, width: "100%", maxWidth: 760, alignSelf: "center" }}>
-          <View
-            style={{
-              height: desktop ? 146 : 122,
-              paddingTop: desktop ? 14 : 2,
-              marginHorizontal: 20,
-              position: "relative",
-              zIndex: 20,
-            }}
-          >
-            <View
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 16,
-                zIndex: 30,
-                flexDirection: "row",
-                gap: 8,
-              }}
-            >
-              <IconButton
-                icon={Menu}
-                label="Open conversations and menu"
-                onPress={() => setThreadsOpen(true)}
-              />
+        <View style={{ flex: 1, flexDirection: "row", overflow: "hidden" }}>
+          {desktop && sidebarOpen && (
+            <Sidebar onClose={() => setSidebarOpen(false)} isOverlay={false} />
+          )}
+          <View style={{ flex: 1, height: "100%", width: "100%" }}>
+            <View style={{ flex: 1, width: "100%", maxWidth: 760, alignSelf: "center" }}>
+              <View
+                style={{
+                  height: desktop ? 146 : 122,
+                  paddingTop: desktop ? 14 : 2,
+                  marginHorizontal: 20,
+                  position: "relative",
+                  zIndex: 20,
+                }}
+              >
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 16,
+                    zIndex: 30,
+                    flexDirection: "row",
+                    gap: 8,
+                  }}
+                >
+                  <IconButton
+                    icon={Menu}
+                    label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+                    onPress={() => setSidebarOpen((prev) => !prev)}
+                  />
               {section === "chat" && (
                 <IconButton
                   icon={Plus}
@@ -495,6 +505,29 @@ function WorkspaceShell({
             </View>
           </View>
         </View>
+      </View>
+        {!desktop && sidebarOpen && (
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 100,
+              flexDirection: "row",
+            }}
+          >
+            <Sidebar onClose={() => setSidebarOpen(false)} isOverlay={true} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close menu"
+              onPress={() => setSidebarOpen(false)}
+              style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}
+            />
+          </View>
+        )}
+      </View>
         {!!toast && (
           <View
             pointerEvents="box-none"
