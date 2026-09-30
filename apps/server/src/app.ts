@@ -337,6 +337,29 @@ export async function createApp(
     const all = await db.list<any>(c.get("owner"), "project-tasks");
     return c.json(all.filter((t) => t.projectId === projectId));
   });
+  app.post("/api/projects/:id/auto-tasks", async (c) => {
+    const projectId = c.req.param("id");
+    const owner = c.get("owner");
+    const body = await c.req.json();
+    const rawTasks = Array.isArray(body.tasks) ? body.tasks : [];
+    const createdList: any[] = [];
+    for (const item of rawTasks) {
+      const task = {
+        id: item.id || randomUUID(),
+        projectId,
+        title: String(item.title || "Untitled Task").slice(0, 200),
+        description: item.description ? String(item.description).slice(0, 1000) : "",
+        status: item.status || "todo",
+        priority: item.priority || "medium",
+        threadId: body.threadId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await db.put(owner, "project-tasks", task);
+      createdList.push(task);
+    }
+    return c.json({ ok: true, tasks: createdList }, 201);
+  });
   app.get("/api/project-tasks", async (c) => {
     return c.json(await db.list(c.get("owner"), "project-tasks"));
   });

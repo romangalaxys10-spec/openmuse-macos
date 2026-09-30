@@ -22,11 +22,12 @@ import {
   Plus,
   Shapes,
   SquareCheck,
+  Search,
   Tag,
   Trash2,
   X,
 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -93,6 +94,10 @@ export function Sidebar({
   const [editingName, setEditingName] = useState("");
   const [customTagInput, setCustomTagInput] = useState("");
   const [savingAction, setSavingAction] = useState(false);
+
+  // Search & Tag Filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
 
   // Quick New Project / Task modal state
   const [quickNewProjectOpen, setQuickNewProjectOpen] = useState(false);
@@ -342,6 +347,53 @@ export function Sidebar({
     }
   };
 
+  const allUniqueTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of PRESET_TAGS) set.add(p.name);
+    for (const m of Object.values(threadsMeta)) {
+      if (m.tags) {
+        for (const t of m.tags) set.add(t);
+      }
+    }
+    return Array.from(set);
+  }, [threadsMeta]);
+
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const m of Object.values(threadsMeta)) {
+      if (!m.archived && m.tags) {
+        for (const t of m.tags) {
+          counts[t] = (counts[t] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [threadsMeta]);
+
+  const matchesFilter = useCallback(
+    (threadId: string, displayName: string) => {
+      const meta = threadsMeta[threadId];
+      const tags = meta?.tags || [];
+      const linkedProject = projects.find((p) => p.id === meta?.projectId);
+
+      if (selectedTagFilter) {
+        if (!tags.includes(selectedTagFilter)) return false;
+      }
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const cleanQ = q.startsWith("#") ? q.slice(1) : q;
+        const nameMatch = displayName.toLowerCase().includes(q);
+        const tagMatch = tags.some((t) => t.toLowerCase().includes(cleanQ));
+        const projectMatch = linkedProject?.name.toLowerCase().includes(q);
+        if (!nameMatch && !tagMatch && !projectMatch) return false;
+      }
+
+      return true;
+    },
+    [threadsMeta, projects, selectedTagFilter, searchQuery],
+  );
+
   const activeThreads = threads.threads.filter((t) => {
     if (t.id === mainId) return false;
     const meta = threadsMeta[t.id];
@@ -353,6 +405,22 @@ export function Sidebar({
     const meta = threadsMeta[item.id];
     return !meta?.archived && !activeThreads.some((saved) => saved.id === item.id);
   });
+
+  const filteredActiveThreads = activeThreads.filter((t) => {
+    const meta = threadsMeta[t.id];
+    const name = meta?.name || t.name || "Untitled session";
+    return matchesFilter(t.id, name);
+  });
+
+  const filteredUnlistedVisited = unlistedVisited.filter((item, idx) => {
+    const meta = threadsMeta[item.id];
+    const name = meta?.name || `Session ${idx + 1}`;
+    return matchesFilter(item.id, name);
+  });
+
+  const showMainChat =
+    !selectedTagFilter &&
+    (!searchQuery.trim() || "main chat".includes(searchQuery.trim().toLowerCase()));
 
   return (
     <View style={[styles.container, isOverlay && styles.overlayContainer]}>
@@ -423,47 +491,162 @@ export function Sidebar({
 
         {/* Earlier Chats & Sessions */}
         <View style={styles.sectionGroup}>
-          <View style={[s.between, { paddingHorizontal: 6, marginBottom: 4 }]}>
+          <View style={[s.between, { paddingHorizontal: 6, marginBottom: 6 }]}>
             <Text style={styles.sectionLabel}>Chats & Sessions</Text>
             {threads.isLoading && <ActivityIndicator size="small" color={colors.blueDark} />}
           </View>
 
-          {/* Main Chat Item */}
-          <View
-            style={[
-              styles.chatItemRow,
-              section === "chat" && selection.id === mainId && styles.chatItemActive,
-            ]}
-          >
-            <Pressable
-              onPress={() => handleSelectThread(mainId, true)}
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
-              <MessageCircle
-                size={17}
-                color={
-                  section === "chat" && selection.id === mainId ? colors.blueDark : colors.text
-                }
+          {/* Search and Tag Filter Bar */}
+          <View style={{ gap: 6, paddingHorizontal: 4, marginBottom: 8 }}>
+            {/* Search Input */}
+            <View style={styles.searchBarContainer}>
+              <Search size={14} color={colors.muted} />
+              <TextInput
+                placeholder="Search chats or #tag..."
+                placeholderTextColor={colors.muted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                style={styles.searchInput}
               />
-              <View style={{ flex: 1 }}>
+              {(!!searchQuery || !!selectedTagFilter) && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear filter"
+                  onPress={() => {
+                    setSearchQuery("");
+                    setSelectedTagFilter(null);
+                  }}
+                  style={styles.clearSearchBtn}
+                >
+                  <X size={13} color={colors.muted} />
+                </Pressable>
+              )}
+            </View>
+
+            {/* Tag Filter Pills */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 5, paddingVertical: 2 }}
+            >
+              <Pressable
+                onPress={() => setSelectedTagFilter(null)}
+                style={[
+                  styles.tagFilterChip,
+                  !selectedTagFilter && styles.tagFilterChipActive,
+                ]}
+              >
                 <Text
-                  numberOfLines={1}
                   style={[
-                    styles.chatItemText,
-                    section === "chat" && selection.id === mainId && styles.chatItemTextActive,
+                    styles.tagFilterChipText,
+                    !selectedTagFilter && styles.tagFilterChipTextActive,
                   ]}
                 >
-                  Main Chat
+                  All
                 </Text>
-                <Text numberOfLines={1} style={styles.chatItemMuted}>
-                  Primary conversation
+              </Pressable>
+
+              {allUniqueTags.map((tagName) => {
+                const isSelected = selectedTagFilter === tagName;
+                const count = tagCounts[tagName] || 0;
+                const preset = PRESET_TAGS.find((p) => p.name === tagName);
+                const tagBg = isSelected ? colors.text : preset?.bg || "#F1F2F3";
+                const tagTextColor = isSelected ? "#FFFFFF" : preset?.text || colors.text;
+
+                return (
+                  <Pressable
+                    key={tagName}
+                    onPress={() =>
+                      setSelectedTagFilter((prev) => (prev === tagName ? null : tagName))
+                    }
+                    style={[
+                      styles.tagFilterChip,
+                      { backgroundColor: tagBg },
+                      isSelected && { borderColor: colors.text },
+                    ]}
+                  >
+                    <Text style={[styles.tagFilterChipText, { color: tagTextColor }]}>
+                      #{tagName}
+                    </Text>
+                    {count > 0 && (
+                      <View
+                        style={[
+                          styles.tagFilterBadge,
+                          isSelected && { backgroundColor: "rgba(255,255,255,0.3)" },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.tagFilterBadgeText,
+                            isSelected && { color: "#FFFFFF" },
+                          ]}
+                        >
+                          {count}
+                        </Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Filter Active Indicator */}
+            {(!!searchQuery || !!selectedTagFilter) && (
+              <View style={[s.between, styles.filterActiveBar]}>
+                <Text style={styles.filterActiveText}>
+                  Filtering: {selectedTagFilter ? `#${selectedTagFilter}` : `"${searchQuery}"`} (
+                  {filteredActiveThreads.length + filteredUnlistedVisited.length})
                 </Text>
+                <Pressable
+                  onPress={() => {
+                    setSearchQuery("");
+                    setSelectedTagFilter(null);
+                  }}
+                >
+                  <Text style={styles.clearFilterLink}>Clear</Text>
+                </Pressable>
               </View>
-            </Pressable>
+            )}
           </View>
 
+          {/* Main Chat Item */}
+          {showMainChat && (
+            <View
+              style={[
+                styles.chatItemRow,
+                section === "chat" && selection.id === mainId && styles.chatItemActive,
+              ]}
+            >
+              <Pressable
+                onPress={() => handleSelectThread(mainId, true)}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}
+              >
+                <MessageCircle
+                  size={17}
+                  color={
+                    section === "chat" && selection.id === mainId ? colors.blueDark : colors.text
+                  }
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.chatItemText,
+                      section === "chat" && selection.id === mainId && styles.chatItemTextActive,
+                    ]}
+                  >
+                    Main Chat
+                  </Text>
+                  <Text numberOfLines={1} style={styles.chatItemMuted}>
+                    Primary conversation
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
+          )}
+
           {/* Active side chats / sessions */}
-          {activeThreads.map((thread) => {
+          {filteredActiveThreads.map((thread) => {
             const isActive = section === "chat" && selection.id === thread.id;
             const meta = threadsMeta[thread.id];
             const displayName = meta?.name || thread.name || "Untitled session";
@@ -540,7 +723,7 @@ export function Sidebar({
           })}
 
           {/* Unlisted visited local sessions */}
-          {unlistedVisited.map((item, idx) => {
+          {filteredUnlistedVisited.map((item, idx) => {
             const isActive = section === "chat" && selection.id === item.id;
             const meta = threadsMeta[item.id];
             const displayName = meta?.name || `Session ${idx + 1}`;
@@ -586,6 +769,26 @@ export function Sidebar({
               </View>
             );
           })}
+
+          {/* Empty search / tag filter state */}
+          {(!!searchQuery || !!selectedTagFilter) &&
+            !filteredActiveThreads.length &&
+            !filteredUnlistedVisited.length && (
+              <View style={styles.noFilterResults}>
+                <Text style={styles.noFilterResultsText}>
+                  No chats match {selectedTagFilter ? `#${selectedTagFilter}` : `"${searchQuery}"`}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    setSearchQuery("");
+                    setSelectedTagFilter(null);
+                  }}
+                  style={{ marginTop: 4 }}
+                >
+                  <Text style={styles.clearFilterLink}>Reset Filter</Text>
+                </Pressable>
+              </View>
+            )}
 
           {!activeThreads.length && !unlistedVisited.length && !threads.isLoading && (
             <Text style={[s.small, { paddingHorizontal: 8, fontStyle: "italic" }]}>
@@ -1232,5 +1435,90 @@ const styles = StyleSheet.create({
   projectChoiceTextActive: {
     color: "#FFFFFF",
     fontWeight: "600",
+  },
+  searchBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 9,
+    height: 34,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.text,
+    paddingVertical: 0,
+    height: "100%",
+  },
+  clearSearchBtn: {
+    padding: 3,
+  },
+  tagFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "#EEEEF0",
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  tagFilterChipActive: {
+    backgroundColor: colors.text,
+  },
+  tagFilterChipText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  tagFilterChipTextActive: {
+    color: "#FFFFFF",
+  },
+  tagFilterBadge: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  tagFilterBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  filterActiveBar: {
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+  },
+  filterActiveText: {
+    fontSize: 10.5,
+    color: colors.blueDark,
+    fontWeight: "600",
+  },
+  clearFilterLink: {
+    fontSize: 10.5,
+    color: colors.muted,
+    textDecorationLine: "underline",
+    fontWeight: "500",
+  },
+  noFilterResults: {
+    padding: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#EAEAEA",
+    marginHorizontal: 4,
+    marginVertical: 4,
+  },
+  noFilterResultsText: {
+    fontSize: 12,
+    color: colors.muted,
+    textAlign: "center",
   },
 });

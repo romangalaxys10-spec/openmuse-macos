@@ -28,6 +28,7 @@ import { BrowserThreadCard } from "./computer";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
 import { MailToolCard } from "./mail-tool-card";
+import { ProposedTasksCard } from "./proposed-tasks";
 import { FileThreadCard, TaskThreadCard } from "./thread-artifacts";
 import { type Selection, useMuseThread } from "./threads";
 import { Button, Card, CheckRow, colors, ErrorNotice, s } from "./ui";
@@ -491,6 +492,14 @@ export function ChatScreen({
               </View>
             );
           })
+        )}
+        {visible.length > 0 && (
+          <ProposedTasksCard
+            threadId={selection.id}
+            messages={messages}
+            isRunning={busy || agent.isRunning}
+            agentTasks={agentWorkspace?.tasks}
+          />
         )}
         {!richThreads && (
           <>

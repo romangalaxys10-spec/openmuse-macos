@@ -187,3 +187,37 @@ test("Thread metadata endpoints support tags, rename, and archive", async () => 
   });
   assert.equal(delRes.status, 200);
 });
+
+test("Auto-tasks endpoint batch creates milestone tasks for a project", async () => {
+  const projRes = await app.request("/api/projects", {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ name: "Batch Milestone Project", color: "green" }),
+  });
+  const proj = await projRes.json();
+
+  const autoRes = await app.request(`/api/projects/${proj.id}/auto-tasks`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      threadId: "chat-turn-456",
+      tasks: [
+        { title: "Step 1: Scrape competitor pricing", priority: "high" },
+        { title: "Step 2: Generate price comparison matrix" },
+        { title: "Step 3: Export summary report" },
+      ],
+    }),
+  });
+  assert.equal(autoRes.status, 201);
+  const result = await autoRes.json();
+  assert.equal(result.ok, true);
+  assert.equal(result.tasks.length, 3);
+  assert.equal(result.tasks[0].title, "Step 1: Scrape competitor pricing");
+  assert.equal(result.tasks[0].projectId, proj.id);
+  assert.equal(result.tasks[0].threadId, "chat-turn-456");
+
+  // Verify tasks are returned in project tasks list
+  const listRes = await app.request(`/api/projects/${proj.id}/tasks`, { headers: headers() });
+  const tasks = await listRes.json();
+  assert.equal(tasks.length, 3);
+});
